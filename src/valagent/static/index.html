@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ValAgent - Data Validation Agent</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .card-shadow {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        .status-passed { @apply bg-green-100 text-green-800; }
+        .status-failed { @apply bg-red-100 text-red-800; }
+        .status-error { @apply bg-yellow-100 text-yellow-800; }
+        .status-pending { @apply bg-gray-100 text-gray-800; }
+        .status-running { @apply bg-blue-100 text-blue-800; }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        /* Code block styling */
+        .code-block {
+            background: #1e293b;
+            color: #e2e8f0;
+            font-family: 'Fira Code', 'Monaco', monospace;
+            font-size: 0.875rem;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+        }
+        
+        /* Animation */
+        @keyframes pulse-slow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .animate-pulse-slow {
+            animation: pulse-slow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen" x-data="app()">
+    <!-- Header -->
+    <header class="gradient-bg text-white shadow-lg">
+        <div class="container mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                        <i data-lucide="shield-check" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold">ValAgent</h1>
+                        <p class="text-sm text-white/80">Data Validation Agent</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="flex items-center space-x-2 text-sm">
+                        <span class="w-2 h-2 rounded-full" :class="connectionStatus.connected ? 'bg-green-400' : 'bg-red-400'"></span>
+                        <span x-text="connectionStatus.connected ? 'Connected' : 'Disconnected'"></span>
+                    </div>
+                    <button @click="refreshConnections()" class="p-2 hover:bg-white/10 rounded-lg transition">
+                        <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-6 py-8">
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white rounded-xl p-6 card-shadow">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-500 uppercase tracking-wide">Total Runs</p>
+                        <p class="text-3xl font-bold text-gray-900" x-text="stats.total_runs || 0"></p>
+                    </div>
+                    <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <i data-lucide="activity" class="w-6 h-6 text-blue-600"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl p-6 card-shadow">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-500 uppercase tracking-wide">Tests Passed</p>
+                        <p class="text-3xl font-bold text-green-600" x-text="stats.passed_tests || 0"></p>
+                    </div>
+                    <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                        <i data-lucide="check-circle" class="w-6 h-6 text-green-600"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl p-6 card-shadow">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-500 uppercase tracking-wide">Tests Failed</p>
+                        <p class="text-3xl font-bold text-red-600" x-text="stats.failed_tests || 0"></p>
+                    </div>
+                    <div class="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
+                        <i data-lucide="x-circle" class="w-6 h-6 text-red-600"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl p-6 card-shadow">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-500 uppercase tracking-wide">Pass Rate</p>
+                        <p class="text-3xl font-bold text-purple-600" x-text="(stats.pass_rate || 0) + '%'"></p>
+                    </div>
+                    <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                        <i data-lucide="trending-up" class="w-6 h-6 text-purple-600"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Left Column: New Validation -->
+            <div class="lg:col-span-2 space-y-6">
+                <!-- New Validation Form -->
+                <div class="bg-white rounded-xl card-shadow">
+                    <div class="border-b border-gray-100 px-6 py-4">
+                        <h2 class="text-lg font-semibold text-gray-900 flex items-center">
+                            <i data-lucide="plus-circle" class="w-5 h-5 mr-2 text-blue-600"></i>
+                            New Validation
+                        </h2>
+                    </div>
+                    <div class="p-6">
+                        <form @submit.prevent="createValidation()">
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    Validation Name
+                                </label>
+                                <input 
+                                    type="text" 
+                                    x-model="newValidation.name"
+                                    placeholder="e.g., Monthly Sales Data Validation"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    required
+                                >
+                            </div>
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    Business Rules
+                                    <span class="text-gray-400 font-normal">(one per line)</span>
+                                </label>
+                                <textarea 
+                                    x-model="newValidation.rulesText"
+                                    rows="6"
+                                    placeholder="Enter your business rules in natural language...
+
+Example:
+All customer records from source should exist in target
+Total sales amount should match between source and target
+No duplicate customer IDs should exist in target"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                                    required
+                                ></textarea>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <button 
+                                    type="button"
+                                    @click="analyzeRules()"
+                                    :disabled="loading"
+                                    class="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition flex items-center"
+                                >
+                                    <i data-lucide="eye" class="w-4 h-4 mr-2"></i>
+                                    Preview Tests
+                                </button>
+                                <button 
+                                    type="submit"
+                                    :disabled="loading || !newValidation.name || !newValidation.rulesText"
+                                    class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <i data-lucide="play" class="w-4 h-4 mr-2"></i>
+                                    <span x-text="loading ? 'Running...' : 'Run Validation'"></span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Analysis Preview (when analyzing) -->
+                <div x-show="analysisResult" x-transition class="bg-white rounded-xl card-shadow">
+                    <div class="border-b border-gray-100 px-6 py-4 flex items-center justify-between">
+                        <h2 class="text-lg font-semibold text-gray-900 flex items-center">
+                            <i data-lucide="file-search" class="w-5 h-5 mr-2 text-purple-600"></i>
+                            Analysis Preview
+                        </h2>
+                        <button @click="analysisResult = null" class="text-gray-400 hover:text-gray-600">
+                            <i data-lucide="x" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                    <div class="p-6">
+                        <template x-if="analysisResult">
+                            <div>
+                                <div class="mb-4 p-4 bg-blue-50 rounded-lg">
+                                    <p class="text-sm text-blue-800">
+                                        <strong x-text="analysisResult.summary?.total_test_cases || analysisResult.test_cases?.length || 0"></strong> test cases will be generated
+                                    </p>
+                                </div>
+                                <div class="space-y-3 max-h-96 overflow-y-auto">
+                                    <template x-for="(test, index) in (analysisResult.test_cases || [])" :key="index">
+                                        <div class="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                            <div class="flex items-start justify-between">
+                                                <div>
+                                                    <h4 class="font-medium text-gray-900" x-text="test.name"></h4>
+                                                    <p class="text-sm text-gray-500" x-text="test.description"></p>
+                                                </div>
+                                                <span class="px-2 py-1 text-xs rounded-full bg-gray-200 text-gray-700" x-text="test.validation_type"></span>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Current/Recent Validation Result -->
+                <div x-show="currentResult" x-transition class="bg-white rounded-xl card-shadow">
+                    <div class="border-b border-gray-100 px-6 py-4 flex items-center justify-between">
+                        <h2 class="text-lg font-semibold text-gray-900 flex items-center">
+                            <i data-lucide="clipboard-check" class="w-5 h-5 mr-2 text-green-600"></i>
+                            Validation Results
+                        </h2>
+                        <div class="flex items-center space-x-2">
+                            <span 
+                                class="px-3 py-1 text-sm font-medium rounded-full"
+                                :class="{
+                                    'bg-green-100 text-green-800': currentResult?.status === 'passed',
+                                    'bg-red-100 text-red-800': currentResult?.status === 'failed',
+                                    'bg-yellow-100 text-yellow-800': currentResult?.status === 'error',
+                                    'bg-blue-100 text-blue-800': currentResult?.status === 'running'
+                                }"
+                                x-text="currentResult?.status?.toUpperCase()"
+                            ></span>
+                            <button @click="currentResult = null" class="text-gray-400 hover:text-gray-600">
+                                <i data-lucide="x" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="p-6">
+                        <template x-if="currentResult">
+                            <div>
+                                <!-- Summary -->
+                                <div class="grid grid-cols-4 gap-4 mb-6">
+                                    <div class="text-center p-3 bg-gray-50 rounded-lg">
+                                        <p class="text-2xl font-bold text-gray-900" x-text="currentResult.total_tests"></p>
+                                        <p class="text-xs text-gray-500">Total</p>
+                                    </div>
+                                    <div class="text-center p-3 bg-green-50 rounded-lg">
+                                        <p class="text-2xl font-bold text-green-600" x-text="currentResult.passed_tests"></p>
+                                        <p class="text-xs text-gray-500">Passed</p>
+                                    </div>
+                                    <div class="text-center p-3 bg-red-50 rounded-lg">
+                                        <p class="text-2xl font-bold text-red-600" x-text="currentResult.failed_tests"></p>
+                                        <p class="text-xs text-gray-500">Failed</p>
+                                    </div>
+                                    <div class="text-center p-3 bg-yellow-50 rounded-lg">
+                                        <p class="text-2xl font-bold text-yellow-600" x-text="currentResult.error_tests"></p>
+                                        <p class="text-xs text-gray-500">Errors</p>
+                                    </div>
+                                </div>
+
+                                <!-- Test Cases -->
+                                <div class="space-y-3 max-h-96 overflow-y-auto">
+                                    <template x-for="(test, index) in (currentResult.test_cases || [])" :key="test.id">
+                                        <div 
+                                            class="border rounded-lg overflow-hidden"
+                                            :class="{
+                                                'border-green-200': test.status === 'passed',
+                                                'border-red-200': test.status === 'failed',
+                                                'border-yellow-200': test.status === 'error'
+                                            }"
+                                        >
+                                            <div 
+                                                class="px-4 py-3 flex items-center justify-between cursor-pointer"
+                                                :class="{
+                                                    'bg-green-50': test.status === 'passed',
+                                                    'bg-red-50': test.status === 'failed',
+                                                    'bg-yellow-50': test.status === 'error'
+                                                }"
+                                                @click="test.expanded = !test.expanded"
+                                            >
+                                                <div class="flex items-center space-x-3">
+                                                    <i 
+                                                        :data-lucide="test.status === 'passed' ? 'check-circle' : test.status === 'failed' ? 'x-circle' : 'alert-circle'"
+                                                        :class="{
+                                                            'text-green-600': test.status === 'passed',
+                                                            'text-red-600': test.status === 'failed',
+                                                            'text-yellow-600': test.status === 'error'
+                                                        }"
+                                                        class="w-5 h-5"
+                                                    ></i>
+                                                    <span class="font-medium" x-text="test.name"></span>
+                                                </div>
+                                                <div class="flex items-center space-x-2">
+                                                    <span class="text-sm text-gray-500" x-text="test.execution_time_ms?.toFixed(0) + 'ms'"></span>
+                                                    <i data-lucide="chevron-down" class="w-4 h-4 transition-transform" :class="{ 'rotate-180': test.expanded }"></i>
+                                                </div>
+                                            </div>
+                                            <div x-show="test.expanded" x-transition class="px-4 py-3 bg-white border-t">
+                                                <p class="text-sm text-gray-600 mb-2" x-text="test.description"></p>
+                                                <p class="text-sm text-gray-500 mb-3"><strong>Rule:</strong> <span x-text="test.business_rule"></span></p>
+                                                
+                                                <template x-if="test.target_query">
+                                                    <div class="mb-3">
+                                                        <p class="text-xs text-gray-500 mb-1">Target Query:</p>
+                                                        <pre class="code-block text-xs" x-text="test.target_query"></pre>
+                                                    </div>
+                                                </template>
+                                                
+                                                <template x-if="test.error_message">
+                                                    <div class="p-3 bg-red-50 text-red-800 rounded-lg text-sm">
+                                                        <strong>Error:</strong> <span x-text="test.error_message"></span>
+                                                    </div>
+                                                </template>
+                                                
+                                                <template x-if="test.actual_result">
+                                                    <div class="mt-3">
+                                                        <p class="text-xs text-gray-500 mb-1">Result:</p>
+                                                        <pre class="text-xs bg-gray-100 p-2 rounded" x-text="JSON.stringify(test.actual_result, null, 2)"></pre>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: History & Quick Actions -->
+            <div class="space-y-6">
+                <!-- Quick Actions -->
+                <div class="bg-white rounded-xl card-shadow">
+                    <div class="border-b border-gray-100 px-6 py-4">
+                        <h2 class="text-lg font-semibold text-gray-900">Quick Actions</h2>
+                    </div>
+                    <div class="p-4 space-y-2">
+                        <button 
+                            @click="showSchemaModal = true; fetchSchema('source')"
+                            class="w-full px-4 py-3 text-left bg-gray-50 hover:bg-gray-100 rounded-lg transition flex items-center"
+                        >
+                            <i data-lucide="database" class="w-5 h-5 mr-3 text-blue-600"></i>
+                            <div>
+                                <p class="font-medium text-gray-900">View Source Schema</p>
+                                <p class="text-xs text-gray-500">Explore source database tables</p>
+                            </div>
+                        </button>
+                        <button 
+                            @click="showSchemaModal = true; fetchSchema('target')"
+                            class="w-full px-4 py-3 text-left bg-gray-50 hover:bg-gray-100 rounded-lg transition flex items-center"
+                        >
+                            <i data-lucide="database" class="w-5 h-5 mr-3 text-green-600"></i>
+                            <div>
+                                <p class="font-medium text-gray-900">View Target Schema</p>
+                                <p class="text-xs text-gray-500">Explore target database tables</p>
+                            </div>
+                        </button>
+                        <button 
+                            @click="generateTests()"
+                            class="w-full px-4 py-3 text-left bg-gray-50 hover:bg-gray-100 rounded-lg transition flex items-center"
+                        >
+                            <i data-lucide="wand-2" class="w-5 h-5 mr-3 text-purple-600"></i>
+                            <div>
+                                <p class="font-medium text-gray-900">Generate Tests</p>
+                                <p class="text-xs text-gray-500">Auto-generate standard tests</p>
+                            </div>
+                        </button>
+                        <button 
+                            @click="showQueryModal = true"
+                            class="w-full px-4 py-3 text-left bg-gray-50 hover:bg-gray-100 rounded-lg transition flex items-center"
+                        >
+                            <i data-lucide="terminal" class="w-5 h-5 mr-3 text-orange-600"></i>
+                            <div>
+                                <p class="font-medium text-gray-900">Natural Language Query</p>
+                                <p class="text-xs text-gray-500">Ask questions in plain English</p>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Recent Validations -->
+                <div class="bg-white rounded-xl card-shadow">
+                    <div class="border-b border-gray-100 px-6 py-4 flex items-center justify-between">
+                        <h2 class="text-lg font-semibold text-gray-900">Recent Validations</h2>
+                        <button @click="loadValidations()" class="text-gray-400 hover:text-gray-600">
+                            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                    <div class="p-4">
+                        <template x-if="validations.length === 0">
+                            <p class="text-center text-gray-500 py-8">No validations yet</p>
+                        </template>
+                        <div class="space-y-2">
+                            <template x-for="run in validations" :key="run.id">
+                                <div 
+                                    @click="viewValidation(run.id)"
+                                    class="p-3 hover:bg-gray-50 rounded-lg cursor-pointer transition border border-gray-100"
+                                >
+                                    <div class="flex items-center justify-between mb-1">
+                                        <span class="font-medium text-gray-900 truncate" x-text="run.name"></span>
+                                        <span 
+                                            class="px-2 py-0.5 text-xs font-medium rounded-full"
+                                            :class="{
+                                                'bg-green-100 text-green-800': run.status === 'passed',
+                                                'bg-red-100 text-red-800': run.status === 'failed',
+                                                'bg-yellow-100 text-yellow-800': run.status === 'error',
+                                                'bg-gray-100 text-gray-800': run.status === 'pending'
+                                            }"
+                                            x-text="run.status"
+                                        ></span>
+                                    </div>
+                                    <div class="flex items-center text-xs text-gray-500">
+                                        <span x-text="run.passed_tests + '/' + run.total_tests + ' passed'"></span>
+                                        <span class="mx-2">•</span>
+                                        <span x-text="formatTime(run.execution_time_ms)"></span>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Connection Status -->
+                <div class="bg-white rounded-xl card-shadow">
+                    <div class="border-b border-gray-100 px-6 py-4">
+                        <h2 class="text-lg font-semibold text-gray-900">Connections</h2>
+                    </div>
+                    <div class="p-4 space-y-3">
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <div class="flex items-center">
+                                <i data-lucide="database" class="w-5 h-5 mr-3 text-blue-600"></i>
+                                <span class="font-medium">Source DB</span>
+                            </div>
+                            <span 
+                                class="w-3 h-3 rounded-full"
+                                :class="connections.source?.connected ? 'bg-green-500' : 'bg-red-500'"
+                            ></span>
+                        </div>
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <div class="flex items-center">
+                                <i data-lucide="database" class="w-5 h-5 mr-3 text-green-600"></i>
+                                <span class="font-medium">Target DB</span>
+                            </div>
+                            <span 
+                                class="w-3 h-3 rounded-full"
+                                :class="connections.target?.connected ? 'bg-green-500' : 'bg-red-500'"
+                            ></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Schema Modal -->
+    <div 
+        x-show="showSchemaModal" 
+        x-transition
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+        @click.self="showSchemaModal = false"
+    >
+        <div class="bg-white rounded-xl max-w-4xl w-full max-h-[80vh] overflow-hidden">
+            <div class="border-b border-gray-100 px-6 py-4 flex items-center justify-between">
+                <h2 class="text-lg font-semibold text-gray-900" x-text="'Database Schema: ' + currentSchemaDb"></h2>
+                <button @click="showSchemaModal = false" class="text-gray-400 hover:text-gray-600">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="p-6 overflow-y-auto max-h-[60vh]">
+                <template x-if="schemaData">
+                    <div class="space-y-4">
+                        <template x-for="(table, tableName) in schemaData.tables" :key="tableName">
+                            <div class="border rounded-lg overflow-hidden">
+                                <div class="px-4 py-3 bg-gray-50 font-medium flex items-center">
+                                    <i data-lucide="table" class="w-4 h-4 mr-2 text-gray-500"></i>
+                                    <span x-text="tableName"></span>
+                                </div>
+                                <div class="p-4">
+                                    <table class="w-full text-sm">
+                                        <thead>
+                                            <tr class="text-left text-gray-500">
+                                                <th class="pb-2">Column</th>
+                                                <th class="pb-2">Type</th>
+                                                <th class="pb-2">Nullable</th>
+                                                <th class="pb-2">Key</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <template x-for="col in table.columns" :key="col.name">
+                                                <tr class="border-t">
+                                                    <td class="py-2 font-mono" x-text="col.name"></td>
+                                                    <td class="py-2 text-gray-600" x-text="col.type"></td>
+                                                    <td class="py-2" x-text="col.nullable ? 'Yes' : 'No'"></td>
+                                                    <td class="py-2">
+                                                        <span x-show="col.primary_key" class="px-2 py-0.5 bg-yellow-100 text-yellow-800 text-xs rounded">PK</span>
+                                                    </td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+                <template x-if="!schemaData">
+                    <div class="text-center py-12">
+                        <div class="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+                        <p class="text-gray-500">Loading schema...</p>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    <!-- Query Modal -->
+    <div 
+        x-show="showQueryModal" 
+        x-transition
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+        @click.self="showQueryModal = false"
+    >
+        <div class="bg-white rounded-xl max-w-3xl w-full">
+            <div class="border-b border-gray-100 px-6 py-4 flex items-center justify-between">
+                <h2 class="text-lg font-semibold text-gray-900">Natural Language Query</h2>
+                <button @click="showQueryModal = false" class="text-gray-400 hover:text-gray-600">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="p-6">
+                <form @submit.prevent="executeNaturalQuery()">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Ask a question about your data
+                        </label>
+                        <textarea 
+                            x-model="naturalQuery"
+                            rows="3"
+                            placeholder="e.g., How many customers are in the target database? Show me the top 10 orders by amount."
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        ></textarea>
+                    </div>
+                    <button 
+                        type="submit"
+                        :disabled="!naturalQuery || loading"
+                        class="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+                    >
+                        <span x-text="loading ? 'Executing...' : 'Execute Query'"></span>
+                    </button>
+                </form>
+                
+                <template x-if="queryResult">
+                    <div class="mt-6">
+                        <h3 class="font-medium text-gray-900 mb-2">Results</h3>
+                        <p class="text-sm text-gray-600 mb-3" x-text="'Intent: ' + queryResult.understood_intent"></p>
+                        <template x-for="(q, i) in queryResult.queries" :key="i">
+                            <div class="mb-4">
+                                <p class="text-sm font-medium text-gray-700 mb-1" x-text="q.purpose"></p>
+                                <pre class="code-block text-xs mb-2" x-text="q.sql"></pre>
+                                <template x-if="q.result?.rows">
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full text-sm border">
+                                            <thead>
+                                                <tr class="bg-gray-50">
+                                                    <template x-for="col in q.result.columns" :key="col">
+                                                        <th class="px-3 py-2 text-left border-b" x-text="col"></th>
+                                                    </template>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <template x-for="(row, idx) in q.result.rows.slice(0, 10)" :key="idx">
+                                                    <tr>
+                                                        <template x-for="col in q.result.columns" :key="col">
+                                                            <td class="px-3 py-2 border-b" x-text="row[col]"></td>
+                                                        </template>
+                                                    </tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
+                                        <p class="text-xs text-gray-500 mt-2" x-text="'Showing ' + Math.min(10, q.result.rows.length) + ' of ' + q.result.row_count + ' rows'"></p>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="fixed bottom-4 right-4 space-y-2 z-50">
+        <template x-for="toast in toasts" :key="toast.id">
+            <div 
+                x-show="toast.visible"
+                x-transition
+                class="px-4 py-3 rounded-lg shadow-lg flex items-center space-x-3"
+                :class="{
+                    'bg-green-500 text-white': toast.type === 'success',
+                    'bg-red-500 text-white': toast.type === 'error',
+                    'bg-blue-500 text-white': toast.type === 'info'
+                }"
+            >
+                <i :data-lucide="toast.type === 'success' ? 'check-circle' : toast.type === 'error' ? 'x-circle' : 'info'" class="w-5 h-5"></i>
+                <span x-text="toast.message"></span>
+            </div>
+        </template>
+    </div>
+
+    <script>
+        const API_BASE = '/api/v1';
+
+        function app() {
+            return {
+                // State
+                loading: false,
+                stats: {},
+                validations: [],
+                connections: { source: null, target: null },
+                connectionStatus: { connected: false },
+                
+                // Forms
+                newValidation: {
+                    name: '',
+                    rulesText: ''
+                },
+                naturalQuery: '',
+                
+                // Modals
+                showSchemaModal: false,
+                showQueryModal: false,
+                currentSchemaDb: '',
+                schemaData: null,
+                
+                // Results
+                analysisResult: null,
+                currentResult: null,
+                queryResult: null,
+                
+                // Toasts
+                toasts: [],
+                toastId: 0,
+
+                async init() {
+                    await this.loadStats();
+                    await this.loadValidations();
+                    await this.refreshConnections();
+                    lucide.createIcons();
+                },
+
+                async loadStats() {
+                    try {
+                        const res = await fetch(`${API_BASE}/validations/stats`);
+                        if (res.ok) {
+                            this.stats = await res.json();
+                        }
+                    } catch (e) {
+                        console.error('Failed to load stats:', e);
+                    }
+                },
+
+                async loadValidations() {
+                    try {
+                        const res = await fetch(`${API_BASE}/validations?limit=10`);
+                        if (res.ok) {
+                            const data = await res.json();
+                            this.validations = data.runs || [];
+                        }
+                    } catch (e) {
+                        console.error('Failed to load validations:', e);
+                    }
+                },
+
+                async refreshConnections() {
+                    try {
+                        const res = await fetch(`${API_BASE}/connections`);
+                        if (res.ok) {
+                            this.connections = await res.json();
+                            this.connectionStatus.connected = 
+                                this.connections.source?.connected && 
+                                this.connections.target?.connected;
+                        }
+                    } catch (e) {
+                        this.connectionStatus.connected = false;
+                    }
+                },
+
+                async analyzeRules() {
+                    if (!this.newValidation.rulesText) return;
+                    
+                    this.loading = true;
+                    try {
+                        const rules = this.newValidation.rulesText
+                            .split('\n')
+                            .map(r => r.trim())
+                            .filter(r => r.length > 0);
+
+                        const res = await fetch(`${API_BASE}/validations/analyze`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ rules })
+                        });
+
+                        if (res.ok) {
+                            this.analysisResult = await res.json();
+                            this.showToast('Analysis complete', 'success');
+                        } else {
+                            throw new Error('Analysis failed');
+                        }
+                    } catch (e) {
+                        this.showToast('Failed to analyze rules', 'error');
+                    }
+                    this.loading = false;
+                },
+
+                async createValidation() {
+                    if (!this.newValidation.name || !this.newValidation.rulesText) return;
+
+                    this.loading = true;
+                    try {
+                        const rules = this.newValidation.rulesText
+                            .split('\n')
+                            .map(r => r.trim())
+                            .filter(r => r.length > 0);
+
+                        const res = await fetch(`${API_BASE}/validations/quick`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                name: this.newValidation.name,
+                                business_rules: rules
+                            })
+                        });
+
+                        if (res.ok) {
+                            const result = await res.json();
+                            this.currentResult = result;
+                            // Add expanded property to each test case
+                            if (this.currentResult.test_cases) {
+                                this.currentResult.test_cases = this.currentResult.test_cases.map(tc => ({
+                                    ...tc,
+                                    expanded: tc.status !== 'passed'
+                                }));
+                            }
+                            this.showToast('Validation completed!', 'success');
+                            this.newValidation = { name: '', rulesText: '' };
+                            this.analysisResult = null;
+                            await this.loadStats();
+                            await this.loadValidations();
+                        } else {
+                            throw new Error('Validation failed');
+                        }
+                    } catch (e) {
+                        this.showToast('Failed to run validation', 'error');
+                    }
+                    this.loading = false;
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                async viewValidation(id) {
+                    try {
+                        const res = await fetch(`${API_BASE}/validations/${id}`);
+                        if (res.ok) {
+                            this.currentResult = await res.json();
+                            if (this.currentResult.test_cases) {
+                                this.currentResult.test_cases = this.currentResult.test_cases.map(tc => ({
+                                    ...tc,
+                                    expanded: tc.status !== 'passed'
+                                }));
+                            }
+                            this.$nextTick(() => lucide.createIcons());
+                        }
+                    } catch (e) {
+                        this.showToast('Failed to load validation', 'error');
+                    }
+                },
+
+                async fetchSchema(db) {
+                    this.currentSchemaDb = db;
+                    this.schemaData = null;
+                    try {
+                        const res = await fetch(`${API_BASE}/schema/${db}`);
+                        if (res.ok) {
+                            this.schemaData = await res.json();
+                        }
+                    } catch (e) {
+                        this.showToast('Failed to load schema', 'error');
+                    }
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                async generateTests() {
+                    this.loading = true;
+                    try {
+                        const res = await fetch(`${API_BASE}/tests/generate`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({})
+                        });
+
+                        if (res.ok) {
+                            const result = await res.json();
+                            // Convert generated tests to rules format
+                            let rules = [];
+                            for (const cat of result.validation_categories || []) {
+                                for (const test of cat.tests || []) {
+                                    rules.push(test.name + ': ' + test.description);
+                                }
+                            }
+                            this.newValidation.rulesText = rules.slice(0, 10).join('\n');
+                            this.showToast(`Generated ${result.total_tests} test suggestions`, 'success');
+                        }
+                    } catch (e) {
+                        this.showToast('Failed to generate tests', 'error');
+                    }
+                    this.loading = false;
+                },
+
+                async executeNaturalQuery() {
+                    if (!this.naturalQuery) return;
+                    
+                    this.loading = true;
+                    this.queryResult = null;
+                    try {
+                        const res = await fetch(`${API_BASE}/query/natural`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ query: this.naturalQuery })
+                        });
+
+                        if (res.ok) {
+                            this.queryResult = await res.json();
+                        } else {
+                            throw new Error('Query failed');
+                        }
+                    } catch (e) {
+                        this.showToast('Failed to execute query', 'error');
+                    }
+                    this.loading = false;
+                },
+
+                formatTime(ms) {
+                    if (!ms) return '0ms';
+                    if (ms < 1000) return `${Math.round(ms)}ms`;
+                    return `${(ms / 1000).toFixed(1)}s`;
+                },
+
+                showToast(message, type = 'info') {
+                    const id = ++this.toastId;
+                    const toast = { id, message, type, visible: true };
+                    this.toasts.push(toast);
+                    
+                    setTimeout(() => {
+                        toast.visible = false;
+                        setTimeout(() => {
+                            this.toasts = this.toasts.filter(t => t.id !== id);
+                        }, 300);
+                    }, 3000);
+                }
+            };
+        }
+    </script>
+</body>
+</html>
