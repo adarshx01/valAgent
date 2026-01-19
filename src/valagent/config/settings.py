@@ -125,8 +125,8 @@ class AppSettings(BaseSettings):
     api_reload: bool = Field(default=False, alias="API_RELOAD")
 
     # CORS settings
-    cors_origins: list[str] = Field(
-        default=["http://localhost:3000", "http://localhost:8080"],
+    cors_origins_str: str = Field(
+        default="http://localhost:3000,http://localhost:8080",
         alias="CORS_ORIGINS",
     )
 
@@ -145,13 +145,10 @@ class AppSettings(BaseSettings):
     reports_dir: str = Field(default="./reports", alias="REPORTS_DIR")
     max_report_age_days: int = Field(default=30, ge=1, le=365, alias="MAX_REPORT_AGE_DAYS")
 
-    @field_validator("cors_origins", mode="before")
-    @classmethod
-    def parse_cors_origins(cls, v: str | list[str]) -> list[str]:
-        """Parse CORS origins from comma-separated string or list."""
-        if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",") if origin.strip()]
-        return v
+    @property
+    def cors_origins(self) -> list[str]:
+        """Parse CORS origins from comma-separated string."""
+        return [origin.strip() for origin in self.cors_origins_str.split(",") if origin.strip()]
 
 
 class Settings(BaseSettings):
