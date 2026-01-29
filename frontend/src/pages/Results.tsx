@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
 import {
   CheckCircleIcon,
   XCircleIcon,
@@ -142,10 +143,10 @@ export default function Results() {
           <div className="border-b border-gray-100 px-6 py-4">
             <h2 className="text-lg font-semibold text-gray-900">Detailed Report</h2>
           </div>
-          <div className="p-6 prose prose-sm max-w-none">
-            <pre className="whitespace-pre-wrap text-sm text-gray-700 font-mono bg-gray-50 p-4 rounded-lg">
-              {markdown_report}
-            </pre>
+          <div className="p-6 max-h-[600px] overflow-y-auto">
+            <div className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-h1:text-2xl prose-h1:font-bold prose-h1:border-b prose-h1:border-gray-200 prose-h1:pb-2 prose-h2:text-xl prose-h2:font-semibold prose-h2:mt-6 prose-h2:mb-3 prose-h3:text-lg prose-h3:font-medium prose-p:text-gray-700 prose-strong:text-gray-900 prose-ul:my-2 prose-li:text-gray-700 prose-table:border prose-table:border-gray-200 prose-th:bg-gray-50 prose-th:px-4 prose-th:py-2 prose-th:text-left prose-th:font-semibold prose-th:text-gray-700 prose-th:border prose-th:border-gray-200 prose-td:px-4 prose-td:py-2 prose-td:border prose-td:border-gray-200 prose-td:text-gray-600 prose-hr:my-4">
+              <ReactMarkdown>{markdown_report}</ReactMarkdown>
+            </div>
           </div>
         </motion.div>
       )}
