@@ -254,6 +254,18 @@ class QueryExecutorService:
                 success=True,
             )
 
+            # Log SQL and result summary
+            logger.info(
+                f"[{query.database.upper()}] Query {query.id} executed successfully:\n"
+                f"  SQL: {query.sql[:200]}{'...' if len(query.sql) > 200 else ''}\n"
+                f"  Rows: {len(data)} | Time: {execution_time:.2f}ms"
+            )
+            if data and len(data) <= 3:
+                for i, row in enumerate(data):
+                    logger.info(f"  Result Row {i+1}: {row}")
+            elif data:
+                logger.info(f"  Sample: {data[0]}")
+
             logger.debug(
                 f"Query {query.id} executed: {len(data)} rows in {execution_time:.2f}ms"
             )

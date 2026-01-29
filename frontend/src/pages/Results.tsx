@@ -207,20 +207,24 @@ function TestResultCard({ result, index }: { result: any; index: number }) {
     <motion.div
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: index * 0.05 }}
+      transition={{ delay: index * 0.02 }}
       className="p-6"
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-4 flex-1">
-          <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${config.bg}`}>
+          <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${config.bg} flex-shrink-0`}>
             <StatusIcon className={`h-5 w-5 ${config.text}`} />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3">
+            {/* Header */}
+            <div className="flex items-center gap-3 flex-wrap">
               <h3 className="font-medium text-gray-900">{testName}</h3>
               <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${config.bg} ${config.text}`}>
                 {status.toUpperCase()}
               </span>
+              {executionTime && (
+                <span className="text-xs text-gray-400">{executionTime.toFixed(0)}ms</span>
+              )}
             </div>
             <p className="text-sm text-gray-500 mt-1">{description}</p>
             
@@ -242,36 +246,42 @@ function TestResultCard({ result, index }: { result: any; index: number }) {
               </div>
             )}
 
-            {/* Queries */}
+            {/* SQL Queries and Results Section */}
             {(result.source_query || result.target_query) && (
-              <div className="mt-4 space-y-3">
-                {result.source_query && (
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 mb-1 flex items-center gap-1">
-                      <CodeBracketIcon className="h-3 w-3" />
-                      Source Query
-                    </p>
-                    <pre className="text-xs text-gray-700 bg-gray-50 rounded-lg p-3 overflow-x-auto">
-                      {result.source_query}
-                    </pre>
-                  </div>
-                )}
-                {result.target_query && (
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 mb-1 flex items-center gap-1">
-                      <CodeBracketIcon className="h-3 w-3" />
-                      Target Query
-                    </p>
-                    <pre className="text-xs text-gray-700 bg-gray-50 rounded-lg p-3 overflow-x-auto">
-                      {result.target_query}
-                    </pre>
-                  </div>
-                )}
+              <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
+                <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
+                  <h4 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                    <CodeBracketIcon className="h-4 w-4" />
+                    SQL Queries & Results
+                  </h4>
+                </div>
+                <div className="divide-y divide-gray-100 max-h-[500px] overflow-y-auto">
+                  {/* Source Query */}
+                  {result.source_query && (
+                    <SQLResultPanel
+                      label="Source Database"
+                      query={result.source_query}
+                      result={result.source_result}
+                      bgColor="bg-blue-50"
+                      labelColor="text-blue-700"
+                    />
+                  )}
+                  {/* Target Query */}
+                  {result.target_query && (
+                    <SQLResultPanel
+                      label="Target Database"
+                      query={result.target_query}
+                      result={result.target_result}
+                      bgColor="bg-purple-50"
+                      labelColor="text-purple-700"
+                    />
+                  )}
+                </div>
               </div>
             )}
 
-            {/* Execution Proof */}
-            {result.execution_proof && (
+            {/* Legacy Execution Proof (fallback) */}
+            {result.execution_proof && !result.source_query && !result.target_query && (
               <div className="mt-4">
                 <p className="text-xs font-medium text-gray-500 mb-2">Execution Proof</p>
                 <div className="grid grid-cols-2 gap-4">
@@ -292,12 +302,105 @@ function TestResultCard({ result, index }: { result: any; index: number }) {
             )}
           </div>
         </div>
-
-        <div className="text-right text-sm text-gray-500">
-          {executionTime && `${executionTime.toFixed(0)}ms`}
-        </div>
       </div>
     </motion.div>
+  );
+}
+
+function SQLResultPanel({ 
+  label, 
+  query, 
+  result, 
+  bgColor, 
+  labelColor 
+}: {
+  label: string;
+  query: string;
+  result?: {
+    row_count: number;
+    execution_time_ms: number;
+    sample_data: any[];
+    columns: string[];
+    success: boolean;
+    error?: string | null;
+  } | null;
+  bgColor: string;
+  labelColor: string;
+}) {
+  return (
+    <div className="p-4 space-y-3">
+      {/* Label */}
+      <div className="flex items-center justify-between">
+        <span className={`text-xs font-semibold px-2 py-1 rounded ${bgColor} ${labelColor}`}>
+          {label}
+        </span>
+        {result && (
+          <div className="flex items-center gap-3 text-xs text-gray-500">
+            <span>{result.row_count.toLocaleString()} rows</span>
+            <span>{result.execution_time_ms.toFixed(0)}ms</span>
+            {result.success ? (
+              <CheckCircleIcon className="h-4 w-4 text-green-500" />
+            ) : (
+              <XCircleIcon className="h-4 w-4 text-red-500" />
+            )}
+          </div>
+        )}
+      </div>
+      
+      {/* SQL Query */}
+      <div>
+        <p className="text-xs font-medium text-gray-500 mb-1">SQL Query:</p>
+        <pre className="text-xs text-gray-700 bg-gray-50 rounded-lg p-3 overflow-x-auto max-h-32 overflow-y-auto border border-gray-200">
+          {query}
+        </pre>
+      </div>
+      
+      {/* Query Result */}
+      {result && (
+        <div>
+          <p className="text-xs font-medium text-gray-500 mb-1">
+            Result ({result.row_count} rows{result.columns?.length > 0 && `, ${result.columns.length} columns`}):
+          </p>
+          {result.error ? (
+            <div className="text-xs text-red-600 bg-red-50 rounded-lg p-3 border border-red-200">
+              Error: {result.error}
+            </div>
+          ) : result.sample_data && result.sample_data.length > 0 ? (
+            <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+              {/* Column headers */}
+              {result.columns && result.columns.length > 0 && (
+                <div className="bg-gray-100 px-3 py-2 text-xs font-medium text-gray-600 flex gap-4 overflow-x-auto">
+                  {result.columns.map((col, i) => (
+                    <span key={i} className="whitespace-nowrap">{col}</span>
+                  ))}
+                </div>
+              )}
+              {/* Data rows */}
+              <div className="max-h-48 overflow-y-auto divide-y divide-gray-100">
+                {result.sample_data.slice(0, 5).map((row, i) => (
+                  <div key={i} className="px-3 py-2 text-xs text-gray-700 flex gap-4 overflow-x-auto hover:bg-gray-100">
+                    {Object.entries(row).map(([key, value], j) => (
+                      <span key={j} className="whitespace-nowrap">
+                        <span className="text-gray-400">{key}:</span> {String(value ?? 'null')}
+                      </span>
+                    ))}
+                  </div>
+                ))}
+              </div>
+              {result.sample_data.length > 5 && (
+                <div className="px-3 py-2 text-xs text-gray-400 bg-gray-50 border-t border-gray-200">
+                  ... and {result.sample_data.length - 5} more rows (showing first 5)
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3 border border-gray-200">
+              No data returned
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

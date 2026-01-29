@@ -1,6 +1,15 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+export interface QueryResult {
+  row_count: number;
+  execution_time_ms: number;
+  sample_data: Record<string, any>[];
+  columns: string[];
+  success: boolean;
+  error?: string | null;
+}
+
 export interface TestResult {
   test_id?: string;
   test_case_id?: string;
@@ -11,6 +20,8 @@ export interface TestResult {
   status: 'passed' | 'failed' | 'error' | 'skipped';
   source_query?: string;
   target_query?: string;
+  source_result?: QueryResult | null;
+  target_result?: QueryResult | null;
   execution_time?: number;
   duration_ms?: number;
   error_message?: string;

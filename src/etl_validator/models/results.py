@@ -120,6 +120,34 @@ class TestResult(BaseModel):
 
     def to_summary(self) -> dict[str, Any]:
         """Generate summary for reporting."""
+        # Build SQL query information from execution proofs
+        source_query = None
+        target_query = None
+        source_result = None
+        target_result = None
+        
+        for proof in self.execution_proofs:
+            if proof.database == "source":
+                source_query = proof.sql
+                source_result = {
+                    "row_count": proof.row_count,
+                    "execution_time_ms": proof.execution_time_ms,
+                    "sample_data": proof.sample_data[:5] if proof.sample_data else [],
+                    "columns": proof.column_names,
+                    "success": proof.success,
+                    "error": proof.error_message,
+                }
+            elif proof.database == "target":
+                target_query = proof.sql
+                target_result = {
+                    "row_count": proof.row_count,
+                    "execution_time_ms": proof.execution_time_ms,
+                    "sample_data": proof.sample_data[:5] if proof.sample_data else [],
+                    "columns": proof.column_names,
+                    "success": proof.success,
+                    "error": proof.error_message,
+                }
+        
         return {
             "test_case_id": self.test_case_id,
             "test_case_name": self.test_case_name,
@@ -128,6 +156,11 @@ class TestResult(BaseModel):
             "message": self.message,
             "source_rows": self.source_row_count,
             "target_rows": self.target_row_count,
+            # SQL queries and results
+            "source_query": source_query,
+            "target_query": target_query,
+            "source_result": source_result,
+            "target_result": target_result,
         }
 
 
