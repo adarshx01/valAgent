@@ -2,14 +2,20 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 export interface TestResult {
-  test_id: string;
-  test_name: string;
-  description: string;
-  status: 'passed' | 'failed' | 'error';
+  test_id?: string;
+  test_case_id?: string;
+  test_name?: string;
+  test_case_name?: string;
+  description?: string;
+  message?: string;
+  status: 'passed' | 'failed' | 'error' | 'skipped';
   source_query?: string;
   target_query?: string;
   execution_time?: number;
+  duration_ms?: number;
   error_message?: string;
+  source_rows?: number | null;
+  target_rows?: number | null;
   execution_proof?: {
     source_row_count?: number;
     target_row_count?: number;
@@ -24,20 +30,25 @@ export interface ValidationSummary {
   total_tests: number;
   passed: number;
   failed: number;
-  errors: number;
-  overall_status: 'passed' | 'failed' | 'partial';
+  errors?: number;
+  skipped?: number;
   pass_rate: number;
-  total_execution_time: number;
+  total_execution_time?: number;
+  duration_ms?: number;
 }
 
 export interface ValidationReport {
-  validation_id: string;
+  validation_id?: string;
+  report_id?: string;
   report_name: string;
   generated_at: string;
-  overall_status: 'passed' | 'failed' | 'partial';
+  overall_status: 'passed' | 'failed' | 'partial' | 'error';
   summary: ValidationSummary;
   test_results: TestResult[];
   markdown_report?: string;
+  scenarios_covered?: number;
+  total_scenarios?: number;
+  has_critical_failures?: boolean;
 }
 
 export interface ValidationHistoryItem {

@@ -27,7 +27,13 @@ export default function Results() {
     return null;
   }
 
-  const { summary, test_results, generated_at, report_name, validation_id, markdown_report } = currentReport;
+  // Handle both possible API response structures
+  const report_name = currentReport.report_name || 'Validation Report';
+  const generated_at = currentReport.generated_at || new Date().toISOString();
+  const overall_status = currentReport.overall_status || 'unknown';
+  const summary = currentReport.summary || {};
+  const test_results = currentReport.test_results || [];
+  const markdown_report = currentReport.markdown_report;
 
   return (
     <div className="space-y-6">
@@ -76,26 +82,26 @@ export default function Results() {
       >
         <SummaryCard
           title="Overall Status"
-          value={summary.overall_status.toUpperCase()}
-          icon={summary.overall_status === 'passed' ? CheckCircleIcon : XCircleIcon}
-          color={summary.overall_status === 'passed' ? 'green' : 'red'}
+          value={(overall_status || 'unknown').toUpperCase()}
+          icon={overall_status === 'passed' ? CheckCircleIcon : XCircleIcon}
+          color={overall_status === 'passed' ? 'green' : 'red'}
         />
         <SummaryCard
           title="Pass Rate"
-          value={`${summary.pass_rate.toFixed(1)}%`}
+          value={`${(summary.pass_rate || 0).toFixed(1)}%`}
           icon={CheckCircleIcon}
-          color={summary.pass_rate >= 80 ? 'green' : summary.pass_rate >= 50 ? 'yellow' : 'red'}
+          color={(summary.pass_rate || 0) >= 80 ? 'green' : (summary.pass_rate || 0) >= 50 ? 'yellow' : 'red'}
         />
         <SummaryCard
           title="Total Tests"
-          value={summary.total_tests.toString()}
-          subvalue={`${summary.passed} passed, ${summary.failed} failed`}
+          value={(summary.total_tests || 0).toString()}
+          subvalue={`${summary.passed || 0} passed, ${summary.failed || 0} failed`}
           icon={PlayIcon}
           color="blue"
         />
         <SummaryCard
           title="Execution Time"
-          value={`${(summary.total_execution_time / 1000).toFixed(2)}s`}
+          value={`${(((summary as any).duration_ms || (summary as any).total_execution_time || 0) / 1000).toFixed(2)}s`}
           icon={ClockIcon}
           color="purple"
         />
@@ -112,8 +118,8 @@ export default function Results() {
           <h2 className="text-lg font-semibold text-gray-900">Test Results</h2>
         </div>
         <div className="divide-y divide-gray-100">
-          {test_results.map((result, index) => (
-            <TestResultCard key={result.test_id} result={result} index={index} />
+          {test_results.map((result: any, index: number) => (
+            <TestResultCard key={result.test_id || result.test_case_id || index} result={result} index={index} />
           ))}
         </div>
       </motion.div>
@@ -178,8 +184,17 @@ function TestResultCard({ result, index }: { result: any; index: number }) {
     error: { icon: ExclamationTriangleIcon, bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
   };
 
-  const config = statusConfig[result.status as keyof typeof statusConfig] || statusConfig.error;
+  const status = result.status || 'unknown';
+  const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.error;
   const StatusIcon = config.icon;
+  
+  // Handle both naming conventions from API
+  const testName = result.test_name || result.test_case_name || 'Unnamed Test';
+  const description = result.description || result.message || '';
+  const errorMessage = result.error_message || (status === 'error' ? result.message : null);
+  const executionTime = result.execution_time || result.duration_ms;
+  const sourceRows = result.source_rows;
+  const targetRows = result.target_rows;
 
   return (
     <motion.div
@@ -195,16 +210,28 @@ function TestResultCard({ result, index }: { result: any; index: number }) {
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3">
-              <h3 className="font-medium text-gray-900">{result.test_name}</h3>
+              <h3 className="font-medium text-gray-900">{testName}</h3>
               <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${config.bg} ${config.text}`}>
-                {result.status.toUpperCase()}
+                {status.toUpperCase()}
               </span>
             </div>
-            <p className="text-sm text-gray-500 mt-1">{result.description}</p>
+            <p className="text-sm text-gray-500 mt-1">{description}</p>
             
-            {result.error_message && (
+            {/* Row counts */}
+            {(sourceRows !== undefined || targetRows !== undefined) && (
+              <div className="mt-2 flex items-center gap-4 text-xs text-gray-500">
+                {sourceRows !== undefined && sourceRows !== null && (
+                  <span>Source rows: <strong>{sourceRows.toLocaleString()}</strong></span>
+                )}
+                {targetRows !== undefined && targetRows !== null && (
+                  <span>Target rows: <strong>{targetRows.toLocaleString()}</strong></span>
+                )}
+              </div>
+            )}
+            
+            {errorMessage && (
               <div className="mt-3 rounded-lg bg-red-50 border border-red-200 p-3">
-                <p className="text-sm text-red-700">{result.error_message}</p>
+                <p className="text-sm text-red-700">{errorMessage}</p>
               </div>
             )}
 
@@ -260,7 +287,7 @@ function TestResultCard({ result, index }: { result: any; index: number }) {
         </div>
 
         <div className="text-right text-sm text-gray-500">
-          {result.execution_time && `${result.execution_time.toFixed(0)}ms`}
+          {executionTime && `${executionTime.toFixed(0)}ms`}
         </div>
       </div>
     </motion.div>

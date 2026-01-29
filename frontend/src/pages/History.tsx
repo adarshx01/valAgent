@@ -21,7 +21,10 @@ export default function History() {
   const filteredHistory = validationHistory.filter((item) => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.rules.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || item.report.overall_status === statusFilter;
+    const overallStatus = item.report?.overall_status || 'unknown';
+    const matchesStatus = statusFilter === 'all' || 
+      overallStatus === statusFilter || 
+      (statusFilter === 'failed' && (overallStatus === 'failed' || overallStatus === 'error'));
     return matchesSearch && matchesStatus;
   });
 
@@ -169,9 +172,9 @@ export default function History() {
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-start gap-4 flex-1">
                   <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${
-                    item.report.overall_status === 'passed' ? 'bg-green-100' : 'bg-red-100'
+                    item.report?.overall_status === 'passed' ? 'bg-green-100' : 'bg-red-100'
                   }`}>
-                    {item.report.overall_status === 'passed' ? (
+                    {item.report?.overall_status === 'passed' ? (
                       <CheckCircleIcon className="h-6 w-6 text-green-600" />
                     ) : (
                       <XCircleIcon className="h-6 w-6 text-red-600" />
@@ -181,7 +184,7 @@ export default function History() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3">
                       <h3 className="font-medium text-gray-900 truncate">{item.name}</h3>
-                      <StatusBadge status={item.report.overall_status} />
+                      <StatusBadge status={item.report?.overall_status || 'unknown'} />
                     </div>
                     
                     <p className="mt-1 text-sm text-gray-500 line-clamp-2">
@@ -195,10 +198,10 @@ export default function History() {
                       </span>
                       <span>•</span>
                       <span>
-                        {item.report.summary.passed}/{item.report.summary.total_tests} tests passed
+                        {item.report?.summary?.passed || 0}/{item.report?.summary?.total_tests || 0} tests passed
                       </span>
                       <span>•</span>
-                      <span>{item.report.summary.pass_rate.toFixed(1)}% pass rate</span>
+                      <span>{(item.report?.summary?.pass_rate || 0).toFixed(1)}% pass rate</span>
                     </div>
                   </div>
                 </div>
@@ -242,11 +245,11 @@ export default function History() {
           />
           <StatCard
             label="Average Pass Rate"
-            value={`${(validationHistory.reduce((acc, v) => acc + v.report.summary.pass_rate, 0) / validationHistory.length).toFixed(1)}%`}
+            value={`${(validationHistory.reduce((acc, v) => acc + (v.report?.summary?.pass_rate || 0), 0) / validationHistory.length).toFixed(1)}%`}
           />
           <StatCard
             label="Total Tests Run"
-            value={validationHistory.reduce((acc, v) => acc + v.report.summary.total_tests, 0).toString()}
+            value={validationHistory.reduce((acc, v) => acc + (v.report?.summary?.total_tests || 0), 0).toString()}
           />
         </motion.div>
       )}
@@ -259,11 +262,13 @@ function StatusBadge({ status }: { status: string }) {
     passed: 'bg-green-100 text-green-700',
     failed: 'bg-red-100 text-red-700',
     partial: 'bg-yellow-100 text-yellow-700',
+    error: 'bg-orange-100 text-orange-700',
+    unknown: 'bg-gray-100 text-gray-700',
   };
 
   return (
     <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${styles[status as keyof typeof styles] || 'bg-gray-100 text-gray-700'}`}>
-      {status.toUpperCase()}
+      {(status || 'unknown').toUpperCase()}
     </span>
   );
 }

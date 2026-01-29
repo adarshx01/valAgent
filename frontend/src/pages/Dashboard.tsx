@@ -11,7 +11,7 @@ import {
   ArrowTrendingUpIcon,
   ServerStackIcon,
 } from '@heroicons/react/24/outline';
-import { healthApi, schemaApi } from '../api';
+import { schemaApi } from '../api';
 import { useValidationStore } from '../store/validationStore';
 
 export default function Dashboard() {
@@ -42,20 +42,20 @@ export default function Dashboard() {
     },
     {
       name: 'Passed',
-      value: validationHistory.filter(v => v.report.overall_status === 'passed').length.toString(),
+      value: validationHistory.filter(v => v.report?.overall_status === 'passed').length.toString(),
       icon: CheckCircleIcon,
       color: 'bg-green-500',
     },
     {
       name: 'Failed',
-      value: validationHistory.filter(v => v.report.overall_status === 'failed').length.toString(),
+      value: validationHistory.filter(v => v.report?.overall_status === 'failed' || v.report?.overall_status === 'error').length.toString(),
       icon: XCircleIcon,
       color: 'bg-red-500',
     },
     {
       name: 'Avg Pass Rate',
       value: validationHistory.length > 0 
-        ? `${Math.round(validationHistory.reduce((acc, v) => acc + v.report.summary.pass_rate, 0) / validationHistory.length)}%`
+        ? `${Math.round(validationHistory.reduce((acc, v) => acc + (v.report?.summary?.pass_rate || 0), 0) / validationHistory.length)}%`
         : '0%',
       icon: ArrowTrendingUpIcon,
       color: 'bg-purple-500',
@@ -221,20 +221,20 @@ export default function Dashboard() {
                 className="flex items-center justify-between rounded-lg border border-gray-100 p-4 hover:bg-gray-50 transition-colors"
               >
                 <div className="flex items-center gap-4">
-                  <StatusBadge status={validation.report.overall_status} />
+                  <StatusBadge status={validation.report?.overall_status || 'unknown'} />
                   <div>
-                    <p className="font-medium text-gray-900">{validation.report.report_name}</p>
+                    <p className="font-medium text-gray-900">{validation.report?.report_name || validation.name}</p>
                     <p className="text-sm text-gray-500">
-                      {new Date(validation.report.generated_at).toLocaleString()}
+                      {new Date(validation.report?.generated_at || validation.timestamp).toLocaleString()}
                     </p>
                   </div>
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-medium text-gray-900">
-                    {validation.report.summary.passed}/{validation.report.summary.total_tests} passed
+                    {validation.report?.summary?.passed || 0}/{validation.report?.summary?.total_tests || 0} passed
                   </p>
                   <p className="text-xs text-gray-500">
-                    {validation.report.summary.pass_rate.toFixed(1)}% pass rate
+                    {(validation.report?.summary?.pass_rate || 0).toFixed(1)}% pass rate
                   </p>
                 </div>
               </div>
@@ -292,11 +292,12 @@ function StatusBadge({ status }: { status: string }) {
     failed: 'bg-red-100 text-red-700',
     partial: 'bg-yellow-100 text-yellow-700',
     error: 'bg-orange-100 text-orange-700',
+    unknown: 'bg-gray-100 text-gray-700',
   };
 
   return (
     <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${styles[status as keyof typeof styles] || 'bg-gray-100 text-gray-700'}`}>
-      {status.toUpperCase()}
+      {(status || 'unknown').toUpperCase()}
     </span>
   );
 }

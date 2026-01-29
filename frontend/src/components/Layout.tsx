@@ -122,7 +122,7 @@ export default function Layout() {
   );
 }
 
-function Sidebar({ onClose, serverStatus }: { onClose?: () => void; serverStatus: string }) {
+function Sidebar({ onClose, serverStatus: _serverStatus }: { onClose?: () => void; serverStatus: string }) {
   const location = useLocation();
 
   return (

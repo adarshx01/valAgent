@@ -38,7 +38,8 @@ export default function Schema() {
     fetchSchemas();
   }, []);
 
-  const filterTables = (tables: any[], term: string) => {
+  // Helper function for filtering tables
+  const _filterTables = (tables: any[], term: string) => {
     if (!term) return tables;
     return tables.filter(t => 
       t.table_name.toLowerCase().includes(term.toLowerCase()) ||

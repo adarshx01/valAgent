@@ -217,44 +217,59 @@ Extract all validation rules from the business rules text. Map them to the appro
         Returns:
             List of generated test cases
         """
-        system_prompt = """You are an expert QA engineer specializing in ETL/data validation testing.
+        # Get actual table names from each database
+        source_table_names = list(source_schema.tables.keys())
+        target_table_names = list(target_schema.tables.keys())
+        
+        system_prompt = f"""You are an expert QA engineer specializing in ETL/data validation testing.
 Your task is to generate comprehensive test cases with SQL queries to validate business rules.
 
+CRITICAL DATABASE MAPPING:
+- SOURCE database contains ONLY these tables: {', '.join(source_table_names)}
+- TARGET database contains ONLY these tables: {', '.join(target_table_names)}
+
+IMPORTANT RULES:
+1. Source queries MUST ONLY reference tables from the SOURCE database list above
+2. Target queries MUST ONLY reference tables from the TARGET database list above
+3. NEVER use a table name in source query if it's not in the source database
+4. NEVER use a table name in target query if it's not in the target database
+5. If a table doesn't exist in a database, DO NOT generate queries for it
+
 For each test case, generate:
-1. Source query - to extract data from source database
-2. Target query - to validate transformed data in target database
+1. Source query - to extract data from SOURCE database (using ONLY source tables)
+2. Target query - to validate transformed data in TARGET database (using ONLY target tables)
 3. Comparison logic - how to compare the results
 
-IMPORTANT GUIDELINES:
+GUIDELINES:
 - Generate SQL queries compatible with PostgreSQL
 - Include appropriate JOINs for related tables
-- Use parameterized queries where appropriate
 - Handle NULL values properly
 - Consider edge cases (empty results, large datasets)
 - Generate queries that return comparable results
+- Double-check table names match the correct database
 
 Return a JSON object:
-{
+{{
     "test_cases": [
-        {
+        {{
             "name": "Test case name",
             "description": "What this test validates",
             "test_type": "row_count|data_match|aggregation|null_check|unique_check|transformation|format_validation|range_check|duplicate_check",
-            "source_query": {
-                "sql": "SELECT ... FROM ...",
-                "purpose": "What this query extracts"
-            },
-            "target_query": {
-                "sql": "SELECT ... FROM ...",
-                "purpose": "What this query validates"
-            },
+            "source_query": {{
+                "sql": "SELECT ... FROM source_table_name ...",
+                "purpose": "What this query extracts from SOURCE"
+            }},
+            "target_query": {{
+                "sql": "SELECT ... FROM target_table_name ...",
+                "purpose": "What this query validates in TARGET"
+            }},
             "comparison_type": "exact|count|aggregate|subset",
             "comparison_columns": ["col1", "col2"],
             "key_columns": ["id_column"],
             "pass_criteria": "Description of pass condition"
-        }
+        }}
     ]
-}"""
+}}"""
 
         # Build schema context for relevant tables
         source_tables_context = ""
@@ -278,11 +293,22 @@ Return a JSON object:
 BUSINESS RULE:
 {rule.to_prompt_context()}
 
-SOURCE DATABASE TABLES:
+=== SOURCE DATABASE (use ONLY these tables in source_query) ===
+Available tables: {', '.join(source_table_names)}
+
+Schema details:
 {source_tables_context}
 
-TARGET DATABASE TABLES:
+=== TARGET DATABASE (use ONLY these tables in target_query) ===
+Available tables: {', '.join(target_table_names)}
+
+Schema details:
 {target_tables_context}
+
+CRITICAL REMINDERS:
+- source_query SQL must ONLY use tables from SOURCE DATABASE: {', '.join(source_table_names)}
+- target_query SQL must ONLY use tables from TARGET DATABASE: {', '.join(target_table_names)}
+- If a table exists in source but not target (or vice versa), adjust queries accordingly
 
 Generate comprehensive test cases that validate this rule. Include:
 1. Basic validation (row counts, data presence)

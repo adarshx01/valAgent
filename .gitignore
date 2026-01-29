@@ -28,4 +28,6 @@ frontend/.env.*
 ./frontend/.next/
 frontend/.turbo/
 .env
-.env
+env.local
+.env.*.local
+
