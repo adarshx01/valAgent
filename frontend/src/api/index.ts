@@ -16,23 +16,32 @@ export interface ValidationRequest {
 }
 
 export interface QueryRequest {
-  sql: string;
+  query: string;
   database: 'source' | 'target';
 }
 
 export interface SQLGenerationRequest {
-  description: string;
+  natural_language: string;
   database: 'source' | 'target';
 }
 
 export interface TestResult {
-  test_case_id: string;
-  test_case_name: string;
-  status: 'passed' | 'failed' | 'error' | 'skipped';
-  duration_ms: number;
-  message: string;
-  source_rows?: number;
-  target_rows?: number;
+  test_id: string;
+  test_name: string;
+  description: string;
+  status: 'passed' | 'failed' | 'error';
+  source_query?: string;
+  target_query?: string;
+  execution_time?: number;
+  error_message?: string;
+  execution_proof?: {
+    source_row_count?: number;
+    target_row_count?: number;
+    source_execution_time?: number;
+    target_execution_time?: number;
+    source_sample?: any[];
+    target_sample?: any[];
+  };
 }
 
 export interface ValidationSummary {
@@ -40,57 +49,45 @@ export interface ValidationSummary {
   passed: number;
   failed: number;
   errors: number;
-  skipped: number;
+  overall_status: 'passed' | 'failed' | 'partial';
   pass_rate: number;
-  duration_ms: number;
+  total_execution_time: number;
 }
 
 export interface ValidationReport {
-  report_id: string;
+  validation_id: string;
   report_name: string;
   generated_at: string;
-  overall_status: 'passed' | 'failed' | 'partial' | 'error';
+  overall_status: 'passed' | 'failed' | 'partial';
   summary: ValidationSummary;
-  scenarios_covered: number;
-  total_scenarios: number;
-  has_critical_failures: boolean;
+  test_results: TestResult[];
+  markdown_report?: string;
 }
 
 export interface ValidationResponse {
   success: boolean;
   report: ValidationReport;
-  markdown_report: string;
-  test_results: TestResult[];
 }
 
 export interface SchemaInfo {
   database: string;
-  tables: number;
-  schema: Record<string, {
-    columns: number;
-    primary_keys: string[];
-    row_count: number;
-  }>;
-}
-
-export interface ExecutionProof {
-  query_id: string;
-  database: string;
-  sql: string;
-  execution_time_ms: number;
-  row_count: number;
-  sample_data: Record<string, any>[];
-  column_names: string[];
-  executed_at: string;
-  success: boolean;
-  error_message?: string;
+  tables: {
+    table_name: string;
+    columns: {
+      column_name: string;
+      data_type: string;
+      is_nullable: boolean;
+      column_default?: string;
+    }[];
+  }[];
 }
 
 export interface QueryResult {
   success: boolean;
-  data: Record<string, any>[];
+  rows: Record<string, any>[];
   row_count: number;
-  proof: ExecutionProof;
+  execution_time: number;
+  error?: string;
 }
 
 // API Functions
@@ -124,19 +121,19 @@ export const validationApi = {
 
 export const schemaApi = {
   // Get source schema
-  getSourceSchema: async (): Promise<{ success: boolean; schema: SchemaInfo }> => {
+  getSource: async (): Promise<SchemaInfo> => {
     const response = await api.get('/schema/source');
-    return response.data;
+    return response.data.schema || response.data;
   },
 
   // Get target schema
-  getTargetSchema: async (): Promise<{ success: boolean; schema: SchemaInfo }> => {
+  getTarget: async (): Promise<SchemaInfo> => {
     const response = await api.get('/schema/target');
-    return response.data;
+    return response.data.schema || response.data;
   },
 
   // Compare schemas
-  compareSchemas: async (): Promise<any> => {
+  compare: async (): Promise<any> => {
     const response = await api.get('/schema/compare');
     return response.data;
   },
@@ -156,7 +153,7 @@ export const queryApi = {
   },
 
   // Generate SQL
-  generateSQL: async (request: SQLGenerationRequest): Promise<{ success: boolean; sql: string }> => {
+  generate: async (request: SQLGenerationRequest): Promise<{ sql: string }> => {
     const response = await api.post('/query/generate', request);
     return response.data;
   },

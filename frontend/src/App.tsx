@@ -13,7 +13,7 @@ function App() {
       <Route path="/" element={<Layout />}>
         <Route index element={<Dashboard />} />
         <Route path="validate" element={<Validate />} />
-        <Route path="results/:id" element={<Results />} />
+        <Route path="results" element={<Results />} />
         <Route path="schema" element={<Schema />} />
         <Route path="query" element={<Query />} />
         <Route path="history" element={<History />} />
