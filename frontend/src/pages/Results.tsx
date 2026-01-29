@@ -114,13 +114,20 @@ export default function Results() {
         transition={{ delay: 0.2 }}
         className="rounded-xl bg-white shadow-sm border border-gray-100"
       >
-        <div className="border-b border-gray-100 px-6 py-4">
+        <div className="border-b border-gray-100 px-6 py-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">Test Results</h2>
+          <span className="text-sm text-gray-500">{test_results.length} tests</span>
         </div>
         <div className="divide-y divide-gray-100">
-          {test_results.map((result: any, index: number) => (
-            <TestResultCard key={result.test_id || result.test_case_id || index} result={result} index={index} />
-          ))}
+          {test_results.length === 0 ? (
+            <div className="p-6 text-center text-gray-500">
+              No test results available
+            </div>
+          ) : (
+            test_results.map((result: any, index: number) => (
+              <TestResultCard key={result.test_id || result.test_case_id || index} result={result} index={index} />
+            ))
+          )}
         </div>
       </motion.div>
 

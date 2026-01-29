@@ -73,11 +73,18 @@ export default function Validate() {
 
       clearInterval(progressInterval);
       
-      completeValidation(response.report);
+      // Merge report data - test_results and markdown_report may be at root level
+      const reportData = {
+        ...response.report,
+        test_results: response.test_results || response.report?.test_results || [],
+        markdown_report: response.markdown_report || response.report?.markdown_report,
+      };
+      
+      completeValidation(reportData);
       addToHistory({
         name: validationName || 'Validation',
         rules: businessRules,
-        report: response.report,
+        report: reportData,
         timestamp: new Date().toISOString(),
       });
 

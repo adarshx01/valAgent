@@ -67,6 +67,9 @@ export interface ValidationReport {
 export interface ValidationResponse {
   success: boolean;
   report: ValidationReport;
+  // These may be at root level in some API versions
+  test_results?: TestResult[];
+  markdown_report?: string;
 }
 
 export interface SchemaInfo {
