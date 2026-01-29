@@ -82,7 +82,43 @@ export interface SchemaInfo {
       is_nullable: boolean;
       column_default?: string;
     }[];
+    primary_keys?: string[];
+    row_count?: number;
   }[];
+}
+
+// Transform API schema response to expected format
+function transformSchemaResponse(data: any): SchemaInfo {
+  const schemaData = data.schema || data;
+  const database = schemaData.database || 'unknown';
+  
+  // If tables is already an array, return as-is
+  if (Array.isArray(schemaData.tables)) {
+    return {
+      database,
+      tables: schemaData.tables,
+    };
+  }
+  
+  // Transform schema object to tables array
+  const schemaObj = schemaData.schema || {};
+  const tables = Object.entries(schemaObj).map(([tableName, tableInfo]: [string, any]) => ({
+    table_name: tableName.replace(/^public\./, ''), // Remove public. prefix for display
+    columns: Array.isArray(tableInfo.columns) 
+      ? tableInfo.columns 
+      : Array(tableInfo.columns || 0).fill(null).map((_, i) => ({
+          column_name: `column_${i + 1}`,
+          data_type: 'unknown',
+          is_nullable: true,
+        })),
+    primary_keys: tableInfo.primary_keys || [],
+    row_count: tableInfo.row_count || 0,
+  }));
+  
+  return {
+    database,
+    tables,
+  };
 }
 
 export interface QueryResult {
@@ -126,13 +162,13 @@ export const schemaApi = {
   // Get source schema
   getSource: async (): Promise<SchemaInfo> => {
     const response = await api.get('/schema/source');
-    return response.data.schema || response.data;
+    return transformSchemaResponse(response.data);
   },
 
   // Get target schema
   getTarget: async (): Promise<SchemaInfo> => {
     const response = await api.get('/schema/target');
-    return response.data.schema || response.data;
+    return transformSchemaResponse(response.data);
   },
 
   // Compare schemas

@@ -373,7 +373,15 @@ class ValidationOrchestrator:
             "tables": len(schema.tables),
             "schema": {
                 name: {
-                    "columns": len(table.columns),
+                    "columns": [
+                        {
+                            "column_name": col.name,
+                            "data_type": col.get_full_type(),
+                            "is_nullable": col.nullable,
+                            "column_default": col.default,
+                        }
+                        for col in table.columns
+                    ],
                     "primary_keys": table.primary_keys,
                     "row_count": table.approximate_row_count,
                 }

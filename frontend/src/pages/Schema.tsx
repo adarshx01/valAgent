@@ -38,15 +38,6 @@ export default function Schema() {
     fetchSchemas();
   }, []);
 
-  // Helper function for filtering tables
-  const _filterTables = (tables: any[], term: string) => {
-    if (!term) return tables;
-    return tables.filter(t => 
-      t.table_name.toLowerCase().includes(term.toLowerCase()) ||
-      t.columns.some((c: any) => c.column_name.toLowerCase().includes(term.toLowerCase()))
-    );
-  };
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -214,7 +205,11 @@ function SchemaView({ schema, searchTerm, type }: {
                   <TableCellsIcon className="h-5 w-5 text-gray-400" />
                   <div className="text-left">
                     <p className="font-medium text-gray-900">{table.table_name}</p>
-                    <p className="text-sm text-gray-500">{table.columns.length} columns</p>
+                    <p className="text-sm text-gray-500">
+                      {table.columns.length} columns
+                      {table.row_count !== undefined && ` • ${table.row_count.toLocaleString()} rows`}
+                      {table.primary_keys?.length > 0 && ` • PK: ${table.primary_keys.join(', ')}`}
+                    </p>
                   </div>
                 </div>
                 <ChevronRightIcon
