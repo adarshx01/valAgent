@@ -6,6 +6,7 @@ and proper result collection.
 """
 
 import asyncio
+import re
 import time
 from typing import Any
 from datetime import datetime, timezone
@@ -21,6 +22,49 @@ from ..utils.helpers import generate_uuid, get_timestamp_str, compare_values
 logger = get_logger(__name__)
 
 
+def extract_tables_from_sql(sql: str) -> set[str]:
+    """
+    Extract table names from a SQL query.
+    
+    Handles common SQL patterns including:
+    - FROM table_name
+    - JOIN table_name
+    - FROM schema.table_name
+    
+    Args:
+        sql: SQL query string
+        
+    Returns:
+        Set of table names (without schema prefix)
+    """
+    tables = set()
+    
+    # Normalize SQL - remove extra whitespace and convert to lowercase for matching
+    normalized = re.sub(r'\s+', ' ', sql.lower())
+    
+    # Pattern for FROM and JOIN clauses
+    # Matches: FROM table, FROM schema.table, JOIN table, JOIN schema.table
+    patterns = [
+        r'\bfrom\s+(?:public\.)?(\w+)',
+        r'\bjoin\s+(?:public\.)?(\w+)',
+        r'\binto\s+(?:public\.)?(\w+)',
+        r'\bupdate\s+(?:public\.)?(\w+)',
+    ]
+    
+    for pattern in patterns:
+        matches = re.findall(pattern, normalized)
+        tables.update(matches)
+    
+    # Remove SQL keywords that might be matched incorrectly
+    sql_keywords = {'select', 'where', 'and', 'or', 'on', 'as', 'in', 'not', 'null', 
+                    'is', 'like', 'between', 'exists', 'case', 'when', 'then', 'else',
+                    'end', 'group', 'order', 'by', 'having', 'limit', 'offset', 'union',
+                    'intersect', 'except', 'values', 'set', 'true', 'false'}
+    tables = tables - sql_keywords
+    
+    return tables
+
+
 class QueryExecutorService:
     """
     Service for executing validation queries.
@@ -29,8 +73,54 @@ class QueryExecutorService:
     result comparison, and proof of execution generation.
     """
 
-    def __init__(self, db_manager: DatabaseManager):
+    def __init__(self, db_manager: DatabaseManager, source_tables: set[str] | None = None, target_tables: set[str] | None = None):
         self._db_manager = db_manager
+        self._source_tables = source_tables or set()
+        self._target_tables = target_tables or set()
+    
+    def set_schema_tables(self, source_tables: set[str], target_tables: set[str]) -> None:
+        """Set the valid table names for source and target databases (without schema prefix)."""
+        # Normalize: lowercase and strip any schema prefix
+        self._source_tables = {t.lower().replace('public.', '') for t in source_tables}
+        self._target_tables = {t.lower().replace('public.', '') for t in target_tables}
+        logger.info(f"Executor configured - Source tables: {self._source_tables}, Target tables: {self._target_tables}")
+    
+    def _validate_query_tables(self, sql: str, database: str) -> tuple[bool, str]:
+        """
+        Validate that all tables in the query exist in the specified database.
+        
+        Args:
+            sql: SQL query to validate
+            database: 'source' or 'target'
+            
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        tables_in_query = extract_tables_from_sql(sql)
+        
+        if not tables_in_query:
+            # Could not extract tables, allow query to proceed
+            return True, ""
+        
+        valid_tables = self._source_tables if database == "source" else self._target_tables
+        
+        if not valid_tables:
+            # No schema info available, allow query to proceed
+            return True, ""
+        
+        invalid_tables = tables_in_query - valid_tables
+        
+        if invalid_tables:
+            # Check if these tables exist in the OTHER database (common LLM mistake)
+            other_db_tables = self._target_tables if database == "source" else self._source_tables
+            tables_in_wrong_db = invalid_tables & other_db_tables
+            
+            if tables_in_wrong_db:
+                return False, f"Tables {tables_in_wrong_db} belong to {'target' if database == 'source' else 'source'} database, not {database}. Query references wrong database tables."
+            else:
+                return False, f"Tables {invalid_tables} do not exist in {database} database. Valid tables: {valid_tables}"
+        
+        return True, ""
 
     async def execute_query_pair(
         self,
@@ -46,6 +136,36 @@ class QueryExecutorService:
             Comparison result with proofs
         """
         logger.debug(f"Executing query pair: {query_pair.id}")
+
+        # Validate source query tables
+        source_valid, source_error = self._validate_query_tables(
+            query_pair.source_query.sql, 
+            query_pair.source_query.database
+        )
+        if not source_valid:
+            logger.error(f"Source query validation failed: {source_error}")
+            return {
+                "query_pair_id": query_pair.id,
+                "success": False,
+                "error": f"Source query validation failed: {source_error}",
+                "source_proof": None,
+                "target_proof": None,
+            }
+        
+        # Validate target query tables
+        target_valid, target_error = self._validate_query_tables(
+            query_pair.target_query.sql, 
+            query_pair.target_query.database
+        )
+        if not target_valid:
+            logger.error(f"Target query validation failed: {target_error}")
+            return {
+                "query_pair_id": query_pair.id,
+                "success": False,
+                "error": f"Target query validation failed: {target_error}",
+                "source_proof": None,
+                "target_proof": None,
+            }
 
         # Execute both queries in parallel
         source_result, target_result = await asyncio.gather(

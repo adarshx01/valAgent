@@ -121,6 +121,15 @@ class ValidationOrchestrator:
                 f"Target: {len(target_schema.tables)} tables"
             )
 
+            # Configure executor with valid table names (strip schema prefix for matching)
+            source_table_names = set(
+                t.replace('public.', '') for t in source_schema.tables.keys()
+            )
+            target_table_names = set(
+                t.replace('public.', '') for t in target_schema.tables.keys()
+            )
+            self._executor_service.set_schema_tables(source_table_names, target_table_names)
+
             # Step 2: Parse business rules
             logger.info("Step 2: Parsing business rules...")
             rule_set = await self._llm_service.parse_business_rules(

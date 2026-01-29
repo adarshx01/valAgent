@@ -9,6 +9,7 @@ Provides integration with OpenAI and other LLM providers for:
 """
 
 import json
+import re
 from typing import Any
 import openai
 from openai import AsyncOpenAI
@@ -55,6 +56,68 @@ class LLMService:
                 provider=settings.llm_provider,
                 details={"error": str(e)},
             )
+
+    def _extract_tables_from_sql(self, sql: str) -> set[str]:
+        """
+        Extract table names from a SQL query.
+        
+        Args:
+            sql: SQL query string
+            
+        Returns:
+            Set of table names (without schema prefix, lowercase)
+        """
+        tables = set()
+        
+        # Normalize SQL
+        normalized = re.sub(r'\s+', ' ', sql.lower())
+        
+        # Pattern for FROM and JOIN clauses
+        patterns = [
+            r'\bfrom\s+(?:public\.)?(\w+)',
+            r'\bjoin\s+(?:public\.)?(\w+)',
+            r'\binto\s+(?:public\.)?(\w+)',
+            r'\bupdate\s+(?:public\.)?(\w+)',
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, normalized)
+            tables.update(matches)
+        
+        # Remove SQL keywords
+        sql_keywords = {'select', 'where', 'and', 'or', 'on', 'as', 'in', 'not', 'null', 
+                        'is', 'like', 'between', 'exists', 'case', 'when', 'then', 'else',
+                        'end', 'group', 'order', 'by', 'having', 'limit', 'offset', 'union',
+                        'intersect', 'except', 'values', 'set', 'true', 'false'}
+        tables = tables - sql_keywords
+        
+        return tables
+    
+    def _validate_sql_tables(self, sql: str, valid_tables: set[str], db_name: str) -> bool:
+        """
+        Validate that all tables in the SQL exist in the valid tables set.
+        
+        Args:
+            sql: SQL query to validate
+            valid_tables: Set of valid table names (lowercase)
+            db_name: Database name for logging
+            
+        Returns:
+            True if valid, False otherwise
+        """
+        tables_in_query = self._extract_tables_from_sql(sql)
+        
+        if not tables_in_query:
+            # Could not extract tables, assume valid
+            return True
+        
+        invalid_tables = tables_in_query - valid_tables
+        
+        if invalid_tables:
+            logger.warning(f"SQL for {db_name} references invalid tables: {invalid_tables}. Valid tables: {valid_tables}")
+            return False
+        
+        return True
 
     async def _chat_completion(
         self,
@@ -221,32 +284,51 @@ Extract all validation rules from the business rules text. Map them to the appro
         source_table_names = list(source_schema.tables.keys())
         target_table_names = list(target_schema.tables.keys())
         
+        # Find tables that exist in only one database (to explicitly warn about)
+        source_only_tables = set(source_table_names) - set(target_table_names)
+        target_only_tables = set(target_table_names) - set(source_table_names)
+        
         system_prompt = f"""You are an expert QA engineer specializing in ETL/data validation testing.
 Your task is to generate comprehensive test cases with SQL queries to validate business rules.
 
-CRITICAL DATABASE MAPPING:
-- SOURCE database contains ONLY these tables: {', '.join(source_table_names)}
-- TARGET database contains ONLY these tables: {', '.join(target_table_names)}
+════════════════════════════════════════════════════════════════════════════════
+CRITICAL DATABASE MAPPING - READ CAREFULLY
+════════════════════════════════════════════════════════════════════════════════
 
-IMPORTANT RULES:
-1. Source queries MUST ONLY reference tables from the SOURCE database list above
-2. Target queries MUST ONLY reference tables from the TARGET database list above
-3. NEVER use a table name in source query if it's not in the source database
-4. NEVER use a table name in target query if it's not in the target database
-5. If a table doesn't exist in a database, DO NOT generate queries for it
+SOURCE DATABASE contains EXACTLY these tables (and ONLY these):
+  → {', '.join(sorted(source_table_names))}
+
+TARGET DATABASE contains EXACTLY these tables (and ONLY these):
+  → {', '.join(sorted(target_table_names))}
+
+TABLES THAT EXIST ONLY IN SOURCE (DO NOT use in target_query):
+  → {', '.join(sorted(source_only_tables)) if source_only_tables else 'None'}
+
+TABLES THAT EXIST ONLY IN TARGET (DO NOT use in source_query):
+  → {', '.join(sorted(target_only_tables)) if target_only_tables else 'None'}
+
+════════════════════════════════════════════════════════════════════════════════
+ABSOLUTE RULES - VIOLATIONS WILL CAUSE FAILURES
+════════════════════════════════════════════════════════════════════════════════
+
+1. source_query.sql MUST ONLY reference tables from SOURCE: {', '.join(sorted(source_table_names))}
+2. target_query.sql MUST ONLY reference tables from TARGET: {', '.join(sorted(target_table_names))}
+3. NEVER reference a source-only table in target_query (e.g., if 'inventory' is source-only, NEVER use it in target_query)
+4. NEVER reference a target-only table in source_query
+5. Before writing ANY query, verify each table name exists in the correct database list above
 
 For each test case, generate:
-1. Source query - to extract data from SOURCE database (using ONLY source tables)
-2. Target query - to validate transformed data in TARGET database (using ONLY target tables)
+1. Source query - to extract data from SOURCE database (using ONLY source tables listed above)
+2. Target query - to validate transformed data in TARGET database (using ONLY target tables listed above)
 3. Comparison logic - how to compare the results
 
 GUIDELINES:
 - Generate SQL queries compatible with PostgreSQL
-- Include appropriate JOINs for related tables
+- Use schema prefix 'public.' for all tables (e.g., public.inventory_status)
+- Include appropriate JOINs for related tables WITHIN THE SAME DATABASE
 - Handle NULL values properly
 - Consider edge cases (empty results, large datasets)
 - Generate queries that return comparable results
-- Double-check table names match the correct database
 
 Return a JSON object:
 {{
@@ -256,11 +338,11 @@ Return a JSON object:
             "description": "What this test validates",
             "test_type": "row_count|data_match|aggregation|null_check|unique_check|transformation|format_validation|range_check|duplicate_check",
             "source_query": {{
-                "sql": "SELECT ... FROM source_table_name ...",
+                "sql": "SELECT ... FROM public.<source_table_name> ...",
                 "purpose": "What this query extracts from SOURCE"
             }},
             "target_query": {{
-                "sql": "SELECT ... FROM target_table_name ...",
+                "sql": "SELECT ... FROM public.<target_table_name> ...",
                 "purpose": "What this query validates in TARGET"
             }},
             "comparison_type": "exact|count|aggregate|subset",
@@ -329,6 +411,14 @@ Generate at most {settings.max_test_cases_per_rule} test cases for this rule."""
 
             parsed = json.loads(response)
             test_cases = []
+            
+            # Create sets for validation (strip schema prefix for matching)
+            source_table_set = set(
+                t.lower().replace('public.', '') for t in source_table_names
+            )
+            target_table_set = set(
+                t.lower().replace('public.', '') for t in target_table_names
+            )
 
             for i, tc_data in enumerate(parsed.get("test_cases", [])):
                 test_case_id = f"tc_{generate_uuid()[:8]}"
@@ -338,19 +428,33 @@ Generate at most {settings.max_test_cases_per_rule} test cases for this rule."""
                 if tc_data.get("source_query") and tc_data.get("target_query"):
                     source_q = tc_data["source_query"]
                     target_q = tc_data["target_query"]
+                    
+                    source_sql = source_q.get("sql", "")
+                    target_sql = target_q.get("sql", "")
+                    
+                    # Validate source query doesn't reference target-only tables
+                    source_sql_valid = self._validate_sql_tables(source_sql, source_table_set, "source")
+                    target_sql_valid = self._validate_sql_tables(target_sql, target_table_set, "target")
+                    
+                    if not source_sql_valid:
+                        logger.warning(f"Skipping test case {tc_data.get('name', i)} - source query references invalid tables")
+                        continue  # Skip this entire test case
+                    if not target_sql_valid:
+                        logger.warning(f"Skipping test case {tc_data.get('name', i)} - target query references invalid tables")
+                        continue  # Skip this entire test case
 
                     query_pair = QueryPair(
                         id=f"qp_{generate_uuid()[:8]}",
                         source_query=ValidationQuery(
                             id=f"sq_{generate_uuid()[:8]}",
                             database="source",
-                            sql=source_q.get("sql", ""),
+                            sql=source_sql,
                             purpose=source_q.get("purpose", ""),
                         ),
                         target_query=ValidationQuery(
                             id=f"tq_{generate_uuid()[:8]}",
                             database="target",
-                            sql=target_q.get("sql", ""),
+                            sql=target_sql,
                             purpose=target_q.get("purpose", ""),
                         ),
                         comparison_type=tc_data.get("comparison_type", "exact"),
@@ -358,6 +462,10 @@ Generate at most {settings.max_test_cases_per_rule} test cases for this rule."""
                         key_columns=tc_data.get("key_columns", []),
                     )
                     query_pairs.append(query_pair)
+                else:
+                    # No query pair, skip this test case
+                    logger.warning(f"Skipping test case {tc_data.get('name', i)} - missing source or target query")
+                    continue
 
                 # Map test type
                 test_type_str = tc_data.get("test_type", "custom")
