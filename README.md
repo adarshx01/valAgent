@@ -347,4 +347,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Built with ❤️ by IQVIA Data Engineering Team**
+**Built with ❤️ by Adarsh**
