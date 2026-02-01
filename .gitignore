@@ -31,3 +31,4 @@ frontend/.turbo/
 env.local
 .env.*.local
 
+.env
