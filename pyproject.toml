@@ -1,7 +1,7 @@
 [project]
 name = "valagent"
 version = "0.1.0"
-description = "Enterprise Data Validation Agent - Validate ETL pipelines using natural language business rules"
+description = "Enterprise Data Validation Agent - Validate ETL pipelines using natural language business rules- -------------------------- bakawas nhi chal rha h ye abhi bhi"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
